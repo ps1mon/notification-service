@@ -18,7 +18,10 @@ class NotificationFactory extends Factory
     public function definition(): array
     {
         return [
-            //
+            'user_id' => \App\Models\User::factory(),
+            'message' => fake()->sentence(),
+            'channel' => 'email',
+            'status' => \App\Enums\NotificationStatus::Pending,
         ];
     }
 }

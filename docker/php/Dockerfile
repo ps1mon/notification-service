@@ -1,14 +1,14 @@
-FROM php:8.3-fpm
+﻿FROM php:8.4-fpm
 
 RUN apt-get update && apt-get install -y \
-    git curl zip unzip libpng-dev libonig-dev libxml2-dev libzip-dev \
-    && docker-php-ext-install pdo_mysql mbstring exif pcntl bcmath gd zip
+    git curl zip unzip libpng-dev libonig-dev libxml2-dev libzip-dev libpq-dev \
+    && docker-php-ext-install pdo_pgsql mbstring exif pcntl bcmath gd zip
 
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
 WORKDIR /var/www
 
-COPY ../.. .
+COPY . .
 
 RUN if [ -f composer.json ]; then composer install --no-interaction --prefer-dist; fi
 

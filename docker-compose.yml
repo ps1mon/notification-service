@@ -1,15 +1,11 @@
-version: "3.8"
-
 services:
     app:
         build:
-            context: ../..
+            context: .
             dockerfile: docker/php/Dockerfile
         container_name: notif_app
         volumes:
             - ./:/var/www
-        environment:
-            - PHP_IDE_CONFIG=serverName=notification-service
         depends_on:
             - db
             - redis
@@ -18,7 +14,7 @@ services:
 
     queue:
         build:
-            context: ../..
+            context: .
             dockerfile: docker/php/Dockerfile
         container_name: notif_queue
         command: php artisan queue:work --sleep=3 --tries=3 --backoff=5
@@ -45,17 +41,16 @@ services:
             - notif
 
     db:
-        image: mysql:8.0
+        image: postgres:16-alpine
         container_name: notif_db
         environment:
-            MYSQL_DATABASE: notifications
-            MYSQL_USER: notif
-            MYSQL_PASSWORD: notif
-            MYSQL_ROOT_PASSWORD: root
+            POSTGRES_DB: notifications
+            POSTGRES_USER: notif
+            POSTGRES_PASSWORD: notif
         ports:
-            - "3307:3306"
+            - "5433:5432"
         volumes:
-            - db_data:/var/lib/mysql
+            - db_data:/var/lib/postgresql/data
         networks:
             - notif
 

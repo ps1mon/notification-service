@@ -1,59 +1,72 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# Notification Service
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+Сервис уведомлений: принимает запрос «отправь пользователю сообщение», доставляет его через выбранный канал (email или Telegram) и гарантирует, что уведомление не потеряется — при сбое отправка повторится автоматически. Дополнительно умеет строить отчёты: сколько уведомлений и сколько ошибок было по каждому каналу за период.
 
-## About Laravel
+## Как это работает (простыми словами)
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+1. Клиент отправляет запрос на создание уведомления через API.
+2. Сервис сохраняет уведомление со статусом **«в обработке»** и ставит его в очередь на отправку — ответ клиенту возвращается сразу, не дожидаясь доставки.
+3. Фоновый обработчик забирает уведомление из очереди и отправляет через нужный канал.
+4. Успех → статус **«отправлено»**. Сбой → до 3 автоматических повторных попыток с нарастающей паузой. Если не помогло → статус **«ошибка»** с текстом причины; такие уведомления видны в API и могут быть перезапущены вручную.
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+В любой момент по API можно узнать статус конкретного уведомления или посмотреть историю уведомлений пользователя с фильтрами по статусу и каналу.
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+## Быстрый старт
 
-## Learning Laravel
+Требуется установленный Docker. Всё остальное (PHP, база данных, очередь) поднимается внутри контейнеров — на машину ничего ставить не нужно.
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework. You can also check out [Laravel Learn](https://laravel.com/learn), where you will be guided through building a modern Laravel application.
+```bash
+cp .env.example .env
+docker-compose up -d --build
+docker-compose exec app php artisan key:generate
+docker-compose exec app php artisan migrate
+```
 
-If you don't feel like reading, [Laracasts](https://laracasts.com) can help. Laracasts contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+API доступно на `http://localhost:8080/api/v1`.
 
-## Laravel Sponsors
+Пример — создать уведомление:
 
-We would like to extend our thanks to the following sponsors for funding Laravel development. If you are interested in becoming a sponsor, please visit the [Laravel Partners program](https://partners.laravel.com).
+```bash
+curl -X POST http://localhost:8080/api/v1/notifications \
+  -H "Content-Type: application/json" \
+  -d '{"user_id": 1, "message": "Привет!", "channel": "email"}'
+```
 
-### Premium Partners
+## API
 
-- **[Vehikl](https://vehikl.com)**
-- **[Tighten Co.](https://tighten.co)**
-- **[Kirschbaum Development Group](https://kirschbaumdevelopment.com)**
-- **[64 Robots](https://64robots.com)**
-- **[Curotec](https://www.curotec.com/services/technologies/laravel)**
-- **[DevSquad](https://devsquad.com/hire-laravel-developers)**
-- **[Redberry](https://redberry.international/laravel-development)**
-- **[Active Logic](https://activelogic.com)**
+| Метод | Путь | Что делает |
+| --- | --- | --- |
+| POST | `/api/v1/notifications` | Создать уведомление (уходит в очередь на отправку) |
+| GET | `/api/v1/notifications/{id}` | Статус конкретного уведомления |
+| GET | `/api/v1/notifications?user_id=&status=&channel=` | История уведомлений пользователя с фильтрами |
+| POST | `/api/v1/reports` | Запросить генерацию отчёта за период |
+| GET | `/api/v1/reports/{id}` | Статус готовности отчёта |
+| GET | `/api/v1/reports/{id}/download` | Скачать готовый отчёт |
 
-## Contributing
+Отчёт генерируется асинхронно: `POST /reports` возвращает `202 Accepted`, клиент опрашивает статус до значения `done`, затем скачивает файл.
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+## Архитектурные решения и почему они такие
 
-## Code of Conduct
+**Каналы отправки — через интерфейс и конфиг, а не через if/switch.** Каждый канал (email, Telegram) — отдельный класс, реализующий общий интерфейс. Соответствие «имя канала → класс» лежит в конфиге. Добавление нового канала (например, SMS) — это один новый класс и одна строка в конфиге; существующий код не меняется. Это прямое требование задания и классический принцип open/closed.
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+**Доставка через очередь, а не синхронно.** Если бы отправка происходила прямо в HTTP-запросе, падение внешнего сервиса (почтового шлюза, Telegram API) роняло бы и наш API, а уведомление терялось бы. Очередь развязывает приём и доставку: API отвечает мгновенно, отправкой занимается фоновый воркер, и у каждого уведомления есть до 3 повторных попыток с паузами 10/30/60 секунд. Исчерпание попыток фиксируется статусом «ошибка» и записью в `failed_jobs` — оттуда доставку можно перезапустить командой (`php artisan queue:retry`).
 
-## Security Vulnerabilities
+**Статус хранится в базе, а не только в очереди.** Очередь — внутренняя механика; бизнесу и клиентам API нужен наблюдаемый статус. Поэтому каждое изменение (в обработке → отправлено/ошибка, счётчик попыток, текст ошибки) пишется в таблицу уведомлений и доступно через API.
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+**Статусы — enum на уровне приложения, а не в базе.** Валидность значений гарантирует PHP enum; в базе — обычная строка с индексом. Добавление нового статуса не требует изменения схемы БД (ALTER TABLE), что упрощает миграции в будущем.
 
-## License
+**Отчёты — асинхронно и с защитой от падения на середине.** Генерация может быть долгой, поэтому она тоже идёт через очередь со своими статусами (pending → processing → done/failed). Файл сначала пишется во временный путь и только после успешной записи становится финальным — «упавшая» генерация не оставляет наполовину записанный файл со статусом «готово». При скачивании сервис отдельно проверяет и статус, и физическое наличие файла.
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+## Качество кода
+
+- **Тесты** — функциональные (API: создание уведомления, постановка в очередь) и unit (смена статусов при успехе/ошибке, фабрика каналов). Запуск: `docker-compose exec app php artisan test`
+- **Статический анализ** — PHPStan, уровень 5, без ошибок. Запуск: `docker-compose exec app composer phpstan`
+- **Code style** — Laravel Pint, конфиг зафиксирован в `pint.json`. Запуск: `docker-compose exec app vendor/bin/pint`
+
+## Что бы я улучшил для продакшна
+
+- **Идемпотентность** — ключ дедупликации при создании уведомления, чтобы повторный запрос клиента (например, из-за таймаута) не породил дубль.
+- **Алертинг по сбоям** — сейчас неотправленные уведомления видны в API и `failed_jobs`; в продакшне нужен автоматический алерт (Slack/PagerDuty) при росте доли ошибок.
+- **Rate limiting по каналам** — у почтовых шлюзов и Telegram есть лимиты запросов; нужен троттлинг на уровне канала.
+- **Метрики** — время доставки, доля ошибок по каналам, глубина очереди (Prometheus + Grafana), чтобы видеть деградацию до жалоб пользователей.
+- **Аутентификация API** — в задании вынесена за скоуп; каркас (Sanctum) уже подключён.

@@ -1,6 +1,9 @@
 <?php
 
+use App\Notifications\Channels\EmailChannel;
+use App\Notifications\Channels\TelegramChannel;
+
 return [
-    'email' => \App\Notifications\Channels\EmailChannel::class,
-    'telegram' => \App\Notifications\Channels\TelegramChannel::class,
+    'email' => EmailChannel::class,
+    'telegram' => TelegramChannel::class,
 ];

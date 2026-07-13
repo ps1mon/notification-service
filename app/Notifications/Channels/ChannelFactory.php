@@ -10,7 +10,7 @@ class ChannelFactory
     {
         $map = config('notification_channels');
 
-        if (!isset($map[$channel])) {
+        if (! isset($map[$channel])) {
             throw new InvalidArgumentException("Unknown channel: {$channel}");
         }
 

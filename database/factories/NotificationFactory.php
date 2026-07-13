@@ -2,7 +2,9 @@
 
 namespace Database\Factories;
 
+use App\Enums\NotificationStatus;
 use App\Models\Notification;
+use App\Models\User;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
 /**
@@ -18,10 +20,10 @@ class NotificationFactory extends Factory
     public function definition(): array
     {
         return [
-            'user_id' => \App\Models\User::factory(),
+            'user_id' => User::factory(),
             'message' => fake()->sentence(),
             'channel' => 'email',
-            'status' => \App\Enums\NotificationStatus::Pending,
+            'status' => NotificationStatus::Pending,
         ];
     }
 }

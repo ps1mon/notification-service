@@ -1,10 +1,8 @@
 <?php
 
-use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\ReportController;
-
+use Illuminate\Support\Facades\Route;
 
 Route::prefix('v1')->group(function () {
     Route::prefix('notifications')->group(function () {
@@ -19,4 +17,3 @@ Route::prefix('v1')->group(function () {
         Route::get('/{report}/download', [ReportController::class, 'download']);
     });
 });
-
